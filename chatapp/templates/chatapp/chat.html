@@ -464,11 +464,50 @@ select,textarea{
 .sidebar.collapsed .collapse-btn {
   display: block;
   margin: auto;
+}/* ===== Scroll to bottom button ===== */
+.scroll-down{
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: #38bdf8;
+  color: #020617;
+  font-size: 20px;
+  cursor: pointer;
+  display: none;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
 }
 
+/* ===== Bot message actions ===== */
+.msg.bot{
+  position: relative;
+}
 
+.msg.bot .msg-actions{
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 6px;
+}
 
+.msg.bot:hover .msg-actions{
+  display: flex;
+}
 
+.msg-actions button{
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  background: #334155;
+  color: #e5e7eb;
+}
 
 </style>
 </style>
@@ -563,17 +602,15 @@ function add(text, role){
   d.innerHTML = role === "bot" ? marked.parse(text) : text;
   chat.appendChild(d);
 
-  if (shouldAutoScroll) {
-    chat.scrollTop = chat.scrollHeight;
-  }
+  if (shouldAutoScroll) chat.scrollTop = chat.scrollHeight;
   return d;
 }
 
 /* =========================
-   COPY BUTTON
+   COPY BUTTON (CODE BLOCKS)
 ========================= */
-function addCopyButtonsAfterStream(msgEl){
-  msgEl.querySelectorAll("pre").forEach(pre=>{
+function addCopyButtonsAfterStream(container){
+  container.querySelectorAll("pre").forEach(pre=>{
     if(pre.querySelector(".copy-btn")) return;
 
     const btn = document.createElement("button");
@@ -581,7 +618,9 @@ function addCopyButtonsAfterStream(msgEl){
     btn.textContent = "Copy";
 
     btn.onclick = () => {
-      const code = pre.querySelector("code")?.innerText || pre.innerText;
+      const code =
+        pre.querySelector("code")?.innerText || pre.innerText;
+
       navigator.clipboard.writeText(code).then(() => {
         btn.textContent = "Copied!";
         setTimeout(() => btn.textContent = "Copy", 1200);
@@ -621,7 +660,8 @@ function createNewChat(){
   const chatObj = {
     id: Date.now().toString(),
     title: "New Chat",
-    messages: []
+    messages: [],
+    pinned: false
   };
 
   chats.unshift(chatObj);
@@ -633,17 +673,33 @@ function createNewChat(){
 
 function renderChatList(){
   chatList.innerHTML = "";
-  chats.forEach(c => {
+
+  const sorted = [
+    ...chats.filter(c => c.pinned),
+    ...chats.filter(c => !c.pinned)
+  ];
+
+  sorted.forEach(c => {
     const item = document.createElement("div");
     item.className = "chat-item" + (c.id === activeChatId ? " active" : "");
-    item.textContent = c.title;
+
+    item.innerHTML = `
+      <span ondblclick="renameChat('${c.id}')">${c.title}</span>
+      <div class="chat-actions">
+        <span onclick="pinChat('${c.id}')">📌</span>
+        <span onclick="deleteChat('${c.id}')">🗑️</span>
+      </div>
+    `;
+
     item.onclick = () => {
       activeChatId = c.id;
       renderChatList();
       loadChat(c.id);
     };
+
     chatList.appendChild(item);
   });
+
   saveChats();
 }
 
@@ -662,8 +718,30 @@ function loadChat(id){
   c.messages.forEach(m => add(m.text, m.role));
 }
 
+function deleteChat(id){
+  chats = chats.filter(c => c.id !== id);
+  activeChatId = chats[0]?.id || null;
+  renderChatList();
+  if(activeChatId) loadChat(activeChatId);
+}
+
+function pinChat(id){
+  const c = chats.find(x => x.id === id);
+  c.pinned = !c.pinned;
+  renderChatList();
+}
+
+function renameChat(id){
+  const c = chats.find(x => x.id === id);
+  const name = prompt("Rename chat:", c.title);
+  if(name){
+    c.title = name;
+    renderChatList();
+  }
+}
+
 /* =========================
-   SEND MESSAGE (NO FLICKER)
+   SEND MESSAGE (STREAMING)
 ========================= */
 async function send(){
   const text = input.value.trim();
@@ -679,12 +757,13 @@ async function send(){
 
   const bot = add("", "bot");
 
-  /* FIXED-SIZE typing indicator */
+  const content = document.createElement("div");
+  content.className = "bot-content";
+  bot.appendChild(content);
+
   const typing = document.createElement("div");
   typing.className = "typing-indicator";
-  typing.innerHTML = `
-    <span></span><span></span><span></span>
-  `;
+  typing.innerHTML = `<span></span><span></span><span></span>`;
   bot.appendChild(typing);
 
   controller = new AbortController();
@@ -707,25 +786,28 @@ async function send(){
       if(done) break;
 
       if(firstChunk){
-        typing.remove();   // 🔑 remove animation once text arrives
+        typing.remove();
         firstChunk = false;
       }
 
       full += decoder.decode(value, { stream:true });
-      bot.innerHTML = marked.parse(full);
+      content.innerHTML = marked.parse(full);
 
-      if (shouldAutoScroll) {
-        chat.scrollTop = chat.scrollHeight;
-      }
+      if (shouldAutoScroll) chat.scrollTop = chat.scrollHeight;
     }
   }catch{}
 
   currentChat.messages.push({ role: "bot", text: full });
-  addCopyButtonsAfterStream(bot);
+  addCopyButtonsAfterStream(content);
+
+  if(currentChat.title === "New Chat"){
+    currentChat.title = text.slice(0, 30);
+    renderChatList();
+  }
 }
 
 /* =========================
-   STOP
+   STOP STREAM
 ========================= */
 function stop(){
   if(controller){
@@ -759,16 +841,7 @@ newChatBtn.addEventListener("click", createNewChat);
 ========================= */
 loadChats();
 </script>
-
-
-
-
-
-
-
-
-
-
+<button id="scrollDownBtn" class="scroll-down">⬇️</button>
 
 </body>
 </html>
