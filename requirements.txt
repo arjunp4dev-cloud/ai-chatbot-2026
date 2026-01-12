@@ -1,0 +1,5 @@
+Django>=6.0
+openai
+requests
+beautifulsoup4
+gunicorn

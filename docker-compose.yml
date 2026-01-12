@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - '8000:8000'
+    environment:
+      - DJANGO_DEBUG=False
+      - DJANGO_SECRET_KEY=replace-this-with-a-secret
+    volumes:
+      - .:/app
+    command: gunicorn chatbot_project.wsgi:application --bind 0.0.0.0:8000 --workers 2
